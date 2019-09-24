@@ -26,12 +26,14 @@ MSG_RECT = pygame.Rect(0, 0, 400, 600)
 MSG = pygame.Surface((400, 600))
 SET_FOR_RESTATE = 0
 MAP_FINISHED = False
+READY_TO_START = False
 ANIMATING = -1
 ANIM_COORD_1 = (0, 0)
 ANIM_COORD_2 = (0, 0)
 LINEAR_PARAM_X = lambda t, x1, x2: ((1 - float(t)) * x1 + (float(t) * x2))
 LINEAR_PARAM_Y = lambda t, y1, y2: ((1 - float(t)) * y1 + (float(t) * y2))
 ENEMY_NAMES = ["Ricardo", "Marie Gemini Marie-Damon", "The Silent Thunder", "Noah of Ark"]
+
 
 
 colors = [tan, grey, green] #may add more colors
@@ -51,6 +53,9 @@ background = background.convert()
 game_finished_surface = pygame.Surface(screen.get_size())
 game_finished_surface.fill((150, 75, 200))
 game_finished_surface.convert()
+main_menu_surface = pygame.Surface(screen.get_size())
+main_menu_surface.fill((50, 50, 50))
+main_menu_surface.convert()
 
 highlight_pos = 0
 map_highlight_rects = [pygame.Rect(MENU_COORD_X + 5, MENU_COORD_Y + 25, 40, 40),  # FIGHT select button
@@ -72,9 +77,9 @@ map_highlight_rects = [pygame.Rect(MENU_COORD_X + 5, MENU_COORD_Y + 25, 40, 40),
                    pygame.Rect(MENU_COORD_X + 135, MENU_COORD_Y + 90, 40, 40), #  | These 5 are for leveling up
                    pygame.Rect(MENU_COORD_X + 210, MENU_COORD_Y + 90, 40, 40), #  |
                    pygame.Rect(MENU_COORD_X + 280, MENU_COORD_Y + 90, 40, 40), # _|
-                   pygame.Rect(GAME_SIZE / 2 * 50, 140, 40, 40),
-                   pygame.Rect(GAME_SIZE / 2 * 50, 170, 40, 40),
-                   pygame.Rect(GAME_SIZE / 2 * 50, 200, 40, 40)
+                   pygame.Rect(25, 130, 40, 40), # These 3 are for post-map menu choices
+                   pygame.Rect(25, 180, 40, 40),
+                   pygame.Rect(25, 230, 40, 40)
                    ]
 
 
@@ -412,6 +417,10 @@ class Player(Actor):
             print("wrong attribute code")
 
 
+NULL_PLAYER = Player(-1, -1, 0)
+CONTINUING_PLAYER = NULL_PLAYER
+
+
 class Enemy(Actor):
     def __init__(self, type, ex, ey, name):
         enemy_imgs = [pygame.image.load("ricardo_overlay.png"),
@@ -516,6 +525,13 @@ def draw_interim(map_state, player):
         map_finished_screen(player)
     elif map_state < 0:
         print("The player quit! what are we still doing???")
+
+
+def draw_main_menu(menu_selection):
+    global main_menu_surface
+    main_rect = main_menu_surface.get_rect()
+    screen.blit(main_menu_surface, main_rect)
+    main_menu_screen(menu_selection)
 
 
 # States reference
@@ -845,8 +861,36 @@ def map_finished_screen(player):
     TextSurf4, TextRect4 = text_objects("Save & Quit", menufont2, 0)
     TextRect1.center = ((GAME_SIZE / 2 * 55, 50))
     TextRect2.center = ((GAME_SIZE / 2 * 55, 150))
-    TextRect3.center = ((GAME_SIZE / 2 * 55, 180))
-    TextRect4.center = ((GAME_SIZE / 2 * 55, 210))
+    TextRect3.center = ((GAME_SIZE / 2 * 55, 200))
+    TextRect4.center = ((GAME_SIZE / 2 * 55, 250))
+    screen.blit(TextSurf1, TextRect1)
+    screen.blit(TextSurf2, TextRect2)
+    screen.blit(TextSurf3, TextRect3)
+    screen.blit(TextSurf4, TextRect4)
+
+
+def main_menu_screen(selection):
+    TextSurf1, TextRect1 = text_objects("Project: Senior Project", menufont1, 0)
+    if selection == 1:
+        TextSurf2, TextRect2 = text_objects("START", menufont3, 2)
+        TextSurf3, TextRect3 = text_objects("OPTIONS", menufont3, 0)
+        TextSurf4, TextRect4 = text_objects("QUIT", menufont3, 0)
+    elif selection == 2:
+        TextSurf2, TextRect2 = text_objects("START", menufont3, 0)
+        TextSurf3, TextRect3 = text_objects("OPTIONS", menufont3, 2)
+        TextSurf4, TextRect4 = text_objects("QUIT", menufont3, 0)
+    elif selection == 3:
+        TextSurf2, TextRect2 = text_objects("START", menufont3, 0)
+        TextSurf3, TextRect3 = text_objects("OPTIONS", menufont3, 0)
+        TextSurf4, TextRect4 = text_objects("QUIT", menufont3, 2)
+    else:
+        TextSurf2, TextRect2 = text_objects("START", menufont3, 0)
+        TextSurf3, TextRect3 = text_objects("OPTIONS", menufont3, 0)
+        TextSurf4, TextRect4 = text_objects("QUIT", menufont3, 0)
+    TextRect1.center = (GAME_SIZE / 2 * 55, 50)
+    TextRect2.center = (GAME_SIZE / 2 * 55, 150)
+    TextRect3.center = (GAME_SIZE / 2 * 55, 200)
+    TextRect4.center = (GAME_SIZE / 2 * 55, 250)
     screen.blit(TextSurf1, TextRect1)
     screen.blit(TextSurf2, TextRect2)
     screen.blit(TextSurf3, TextRect3)
@@ -1179,11 +1223,45 @@ def start_turn(key, player, enemylist):
     if not player.locked:
         enemy_turn(state, player, enemylist)
 
+def start_nav(key, menu_sel):
+    global READY_TO_START
+    # The start menu will have a Title Display, along with START, OPTIONS, and QUIT (for now)
+    if key == pygame.K_RETURN:
+        if menu_sel == 1:
+            # Start menu selection
+            READY_TO_START = True
+            return 0
+        elif menu_sel == 2:
+            # Options Menu selection
+            print("You selected options! It won't do anything...")
+            return menu_sel
+        elif menu_sel == 3:
+            print("You're trying to quit!")
+            return -1
+        else:
+            print("Bad Selection")
+            return -1
+    elif key == pygame.K_DOWN:
+        if 0 < menu_sel < 3:
+            return menu_sel + 1
+        else:
+            return menu_sel
+    elif key == pygame.K_UP:
+        if 1 < menu_sel <= 3:
+            return menu_sel - 1
+        else:
+            return menu_sel
+    elif key == pygame.K_ESCAPE:
+        return -1
+
+
 
 def menu_nav(key, player, enemy_list):
     global state
     global highlight_pos
     global SET_FOR_RESTATE
+    global READY_TO_START
+    global CONTINUING_PLAYER
     if key == pygame.K_SPACE:
         state = 0
         player.locked = False
@@ -1200,7 +1278,7 @@ def menu_nav(key, player, enemy_list):
             if player.inv_disp_start < 6:
                 print("changing inventory display")
                 player.inv_disp_start = player.inv_disp_start + 2
-        elif highlight_pos == 20 or highlight_pos == 21:
+        elif highlight_pos == 20 or highlight_pos == 21:  # after map menu nav
             highlight_pos = highlight_pos + 1
     elif key == pygame.K_UP:
         if highlight_pos == 3 or highlight_pos == 4:
@@ -1213,7 +1291,7 @@ def menu_nav(key, player, enemy_list):
             if player.inv_disp_start > 0:
                 print("changing inventory display")
                 player.inv_disp_start = player.inv_disp_start - 2
-        elif highlight_pos == 21 or highlight_pos == 22:
+        elif highlight_pos == 21 or highlight_pos == 22:  # after map menu nav
             highlight_pos = highlight_pos - 1
     elif key == pygame.K_RIGHT:
         if highlight_pos == 1 or highlight_pos == 3:
@@ -1291,6 +1369,12 @@ def menu_nav(key, player, enemy_list):
             player.attr_up(highlight_pos - 15)
             player.leveling = False
             SET_FOR_RESTATE = 1
+        elif highlight_pos == 21:  # CONTINUE option after finishing a map
+            READY_TO_START = True
+            CONTINUING_PLAYER = player
+        elif highlight_pos == 22 or highlight_pos == 23: #OTHER OPTIONS STILL TO BE IMPLEMENTED
+            READY_TO_START = False
+            CONTINUING_PLAYER = NULL_PLAYER
     elif key == pygame.K_BACKSPACE:
         if player.state == 4:
             state = 1
@@ -1706,28 +1790,56 @@ def main():
     global MSG
     global MSG_RECT
     global SET_FOR_RESTATE
+    global READY_TO_START
+    global CONTINUING_PLAYER
+    global NULL_PLAYER
     global game_finished_surface
-    playing = True
-    player_main = Player(3, 3, 0)
-    map_state = map_start(player_main)
-    if map_state >= 0:
-        print("the map state we found was >= 0")
-        while playing:
-            if 19 < highlight_pos < len(map_highlight_rects) + 1:
-                screen.blit(highlight_arrow, map_highlight_rects[highlight_pos - 1])
-
-            draw_interim(map_state, player_main)
-
+    app_loop = True
+    if CONTINUING_PLAYER == NULL_PLAYER:
+        player_main = Player(3, 3, 0)
+    else:
+        player_main = CONTINUING_PLAYER
+    menu_selection = 1
+    map_state = 0
+    while app_loop:
+        if READY_TO_START:
+            map_state = map_start(player_main)
+            READY_TO_START = False
+        if map_state < 0:
+            app_loop = False
+            READY_TO_START = False
+            continue
+        elif map_state == 0:
+            #This should be the main menu/start screen
+            draw_main_menu(menu_selection)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    playing = False
+                    app_loop = False
+                elif event.type == pygame.KEYDOWN:
+                    menu_selection = start_nav(event.key, menu_selection)
+                    print(str(menu_selection))
+                    if menu_selection < 0:
+                        app_loop = False
+                    elif menu_selection == 0:
+                        print(READY_TO_START)
+
+                    continue
+        else:
+            draw_interim(map_state, player_main)
+            if 19 < highlight_pos < len(map_highlight_rects) + 1:
+                screen.blit(highlight_arrow, map_highlight_rects[highlight_pos - 1])
+            for event in pygame.event.get():
+                print("got an event, event key is: " + str(event.key))
+                if event.type == pygame.QUIT:
+                    app_loop = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        playing = False
+                        app_loop = False
                     else:
                         menu_nav(event.key, player_main, enemies)
 
-            pygame.display.update()
+
+        pygame.display.update()
 
 
 
