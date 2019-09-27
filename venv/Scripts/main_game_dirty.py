@@ -553,18 +553,14 @@ def animate(img_code, param_func_x, param_func_y, current_frame, t1, t2):
     afterfx = True
     img = throwable_imgs[img_code]
     t = t1 + (float(current_frame) / 100)
-    print("the t value that we have is: " + str(t))
-    print("the min and max t values we can have are: min = " + str(t1) + "; max = " + str(t2))
     if t <= t2:
         img_x = param_func_x(t, ANIM_COORD_1[0], ANIM_COORD_2[0])
         img_y = param_func_y(t, ANIM_COORD_1[1], ANIM_COORD_2[1])
         img_rect = pygame.Rect(img_x * 55, img_y * 55, img.get_width(), img.get_height())
         screen.blit(img, img_rect)
         current_frame = current_frame + 1
-        print("current animation frame is: " + str(current_frame))
         return current_frame
     elif afterfx:
-        print("trying to print after effects now...")
         if t <= (t2 + 2.0):
             tile = terrain[math.floor(param_func_x(t2, ANIM_COORD_1[0], ANIM_COORD_2[0]))][math.floor(param_func_y(t2, ANIM_COORD_1[1], ANIM_COORD_2[1]))]
             splash_boom(tile, 0)
@@ -654,6 +650,7 @@ def get_tgt_strs():
         tgts.append(t.name)
     return tgts
 
+# ################################## SCREENS HERE #####################################
 
 def main_display(player):
     TextSurf1, TextRect1 = text_objects("H.P.:", menufont3, 0)
@@ -870,7 +867,7 @@ def map_finished_screen(player):
 
 
 def main_menu_screen(selection):
-    TextSurf1, TextRect1 = text_objects("Project: Senior Project", menufont1, 0)
+    TextSurf1, TextRect1 = text_objects("Senior Project", menufont2, 0)
     if selection == 1:
         TextSurf2, TextRect2 = text_objects("START", menufont3, 2)
         TextSurf3, TextRect3 = text_objects("OPTIONS", menufont3, 0)
@@ -1369,10 +1366,11 @@ def menu_nav(key, player, enemy_list):
             player.attr_up(highlight_pos - 15)
             player.leveling = False
             SET_FOR_RESTATE = 1
-        elif highlight_pos == 21:  # CONTINUE option after finishing a map
+        elif highlight_pos == 20:  # CONTINUE option after finishing a map
             READY_TO_START = True
             CONTINUING_PLAYER = player
-        elif highlight_pos == 22 or highlight_pos == 23: #OTHER OPTIONS STILL TO BE IMPLEMENTED
+            print("Hey.... we're here...")
+        elif highlight_pos == 21 or highlight_pos == 22: #OTHER OPTIONS STILL TO BE IMPLEMENTED
             READY_TO_START = False
             CONTINUING_PLAYER = NULL_PLAYER
     elif key == pygame.K_BACKSPACE:
@@ -1736,7 +1734,6 @@ def splash_boom(tile, type):
             screen.blit(blaze_overlay, blaze_rect)
 
 
-
 def check_target(player, direction, enemies):
     move = player.move_list[player.move_choice]
     d = 1000
@@ -1744,7 +1741,6 @@ def check_target(player, direction, enemies):
     for e in enemies:
         if terrain[e.x_pos][e.y_pos] in tiles_list:
             e.target()
-
 
 
 def get_tiles(player, direction, move):
@@ -1779,7 +1775,6 @@ def get_tiles(player, direction, move):
     return tiles
 
 
-
 def main():
     global state
     global enemies
@@ -1803,6 +1798,14 @@ def main():
     map_state = 0
     while app_loop:
         if READY_TO_START:
+            player_main.state = 0
+            state = 0
+            highlight_pos = 0
+            player_main.locked = False
+            player_main.aiming = False
+            player_main.leveling = False
+            SET_FOR_RESTATE = 0
+            print("HEY WE'RE STARTING A GAME")
             map_state = map_start(player_main)
             READY_TO_START = False
         if map_state < 0:
@@ -1837,6 +1840,8 @@ def main():
                         app_loop = False
                     else:
                         menu_nav(event.key, player_main, enemies)
+                        print("The value of READY TO PLAY: " + str(READY_TO_START))
+                        continue
 
 
         pygame.display.update()
