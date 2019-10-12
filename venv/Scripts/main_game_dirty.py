@@ -32,7 +32,7 @@ ANIM_COORD_1 = (0, 0)
 ANIM_COORD_2 = (0, 0)
 LINEAR_PARAM_X = lambda t, x1, x2: ((1 - float(t)) * x1 + (float(t) * x2))
 LINEAR_PARAM_Y = lambda t, y1, y2: ((1 - float(t)) * y1 + (float(t) * y2))
-ENEMY_NAMES = ["Ricardo", "Marie Gemini Marie-Damon", "The Silent Thunder", "Noah of Ark"]
+ENEMY_NAMES = ["Dumbo", "Smartie", "Al Ert", "Sample"]
 
 
 
@@ -167,6 +167,10 @@ class Tile:
         oty = other_tile.ty
         dist = math.sqrt((otx - self.tx)**2 + (oty - self.ty)**2)
         return dist
+
+class Exit(Tile):
+    def __init__(self, tx, ty):
+        super().__init__(False, tile_types[0], pygame.Rect(tx, ty, 50, 50), tx, ty)
 
 class Item:
     def __init__(self, id, ix, iy, owner, desc):
