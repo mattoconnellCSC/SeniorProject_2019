@@ -2,8 +2,14 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="eec79947-7a84-4f59-84e3-af6aded220e2" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/venv/Scripts/output_1.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/venv/Scripts/output_2.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/venv/Scripts/output_3.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/venv/Scripts/output_4.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/venv/Scripts/output_5.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/venv/Scripts/main_game_dirty.py" beforeDir="false" afterPath="$PROJECT_DIR$/venv/Scripts/main_game_dirty.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venv/Scripts/output.txt" beforeDir="false" afterPath="$PROJECT_DIR$/venv/Scripts/output.txt" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -16,8 +22,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/venv/Scripts/main_game_dirty.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="362">
-              <caret line="161" column="21" selection-start-line="161" selection-start-column="21" selection-end-line="161" selection-end-column="21" />
+            <state relative-caret-position="3938">
+              <caret line="1367" column="14" lean-forward="true" selection-start-line="1367" selection-start-column="14" selection-end-line="1367" selection-end-column="14" />
               <folding>
                 <element signature="e#0#28#0" expanded="true" />
               </folding>
@@ -33,6 +39,18 @@
         <option value="Python Script" />
       </list>
     </option>
+  </component>
+  <component name="FindInProjectRecents">
+    <findStrings>
+      <find>check_tile_okay</find>
+      <find>\w*\[\w*\]\[\w*\]</find>
+      <find>\w*\[\w*( + | -) \w*\]\[\w*( + | -) \w*\]</find>
+      <find>\[...\]\[...\]</find>
+      <find>\[.*\]\[.*\]</find>
+      <find>wipe_screen</find>
+      <find>locked</find>
+      <find>draw_grid</find>
+    </findStrings>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -56,7 +74,28 @@
     </navigator>
     <panes>
       <pane id="Scope" />
-      <pane id="ProjectPane" />
+      <pane id="ProjectPane">
+        <subPane>
+          <expand>
+            <path>
+              <item name="SeniorProject2019" type="b2602c69:ProjectViewProjectNode" />
+              <item name="SeniorProject2019" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="SeniorProject2019" type="b2602c69:ProjectViewProjectNode" />
+              <item name="SeniorProject2019" type="462c0819:PsiDirectoryNode" />
+              <item name="venv" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="SeniorProject2019" type="b2602c69:ProjectViewProjectNode" />
+              <item name="SeniorProject2019" type="462c0819:PsiDirectoryNode" />
+              <item name="venv" type="462c0819:PsiDirectoryNode" />
+              <item name="Scripts" type="462c0819:PsiDirectoryNode" />
+            </path>
+          </expand>
+          <select />
+        </subPane>
+      </pane>
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -146,14 +185,15 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
+    <frame x="-8" y="-8" width="1936" height="1056" extended-state="7" />
+    <editor active="true" />
     <layout>
-      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.11169652" />
+      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.18440464" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" />
-      <window_info anchor="bottom" id="Run" order="2" weight="0.12888889" />
+      <window_info active="true" anchor="bottom" id="Run" order="2" visible="true" weight="0.24555555" />
       <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
@@ -200,32 +240,33 @@
       </map>
     </option>
   </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/venv/Scripts/main_game_dirty.py</url>
+          <line>1688</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
   <component name="editorHistoryManager">
+    <entry file="file://$PROJECT_DIR$/venv/Scripts/output_2.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/venv/Scripts/output.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
     <entry file="file://$PROJECT_DIR$/venv/Scripts/main_game_dirty.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="362">
-          <caret line="161" column="21" selection-start-line="161" selection-start-column="21" selection-end-line="161" selection-end-column="21" />
+        <state relative-caret-position="3938">
+          <caret line="1367" column="14" lean-forward="true" selection-start-line="1367" selection-start-column="14" selection-end-line="1367" selection-end-column="14" />
           <folding>
             <element signature="e#0#28#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/venv/Scripts/main_game_dirty.py</url>
-          <line>1443</line>
-          <option name="timeStamp" value="6" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/venv/Scripts/main_game_dirty.py</url>
-          <line>1467</line>
-          <option name="timeStamp" value="8" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
 </project>
