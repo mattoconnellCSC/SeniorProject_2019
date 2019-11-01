@@ -1,4 +1,5 @@
 from typing import List, Any
+from operator import attrgetter
 import math
 import pygame
 import random
@@ -32,7 +33,7 @@ ANIM_COORD_1 = (0, 0)
 ANIM_COORD_2 = (0, 0)
 LINEAR_PARAM_X = lambda t, x1, x2: ((1 - float(t)) * x1 + (float(t) * x2))
 LINEAR_PARAM_Y = lambda t, y1, y2: ((1 - float(t)) * y1 + (float(t) * y2))
-ENEMY_NAMES = ["Dumbo", "Smartie", "Al Ert", "Sample"]
+ENEMY_NAMES = ["Grunt", "Sniper", "Brute"]
 
 
 colors = [tan, grey, green] #may add more colors
@@ -82,21 +83,6 @@ map_highlight_rects = [pygame.Rect(MENU_COORD_X + 5, MENU_COORD_Y + 25, 40, 40),
                    ]
 
 
-
-# highlight positions are as follows:
-# 0 = nothing
-# 1 = "Fight"
-# 2 = "Pack"
-# 3 = "Stats"
-# 4 = "Menu"
-# 5 = "Move 1"
-# 6 = "Move 2"
-# 7 = aim mode -- no highlights
-# 8 = level up mode -- menu change and skill point prompt
-
-
-
-
 screen.blit(background, (0, 0))
 potion_img = pygame.image.load("potion_graphic.png")
 bomb_img = pygame.image.load("bomb_graphic.png")
@@ -111,8 +97,82 @@ ocean_tile = pygame.image.load("ocean-tile.png")
 mountain_tile = pygame.image.load("mountain-tile.png")
 forest_tile = pygame.image.load("forest-tile.png")
 blaze_overlay = pygame.image.load("blaze_overlay.png")
-weighted_tile_types = [blaze_overlay, ocean_tile, grass_tile, forest_tile, mountain_tile, desert_tile]
+portal_overlay = pygame.image.load("portal-overlay.png")
+red_desert_tile = pygame.image.load("red-desert-tile.png")
+swamp_grass_tile = pygame.image.load("swamp-grass-tile.png")
+lava_tile = pygame.image.load("lava-tile.png")
+misty_mtn_tile = pygame.image.load("misty-mountain-tile.png")
+volcano_tile = pygame.image.load("volcano-tile.png")
+
+even_tile_types = [blaze_overlay,
+                   ocean_tile,
+                   grass_tile,
+                   forest_tile,
+                   desert_tile,
+                   mountain_tile]
+
+normal_tile_types = [blaze_overlay,
+                       ocean_tile,
+                       grass_tile, grass_tile,
+                       forest_tile, forest_tile,
+                       mountain_tile,
+                       desert_tile]
+
+fiery_tile_types = [blaze_overlay,
+                    lava_tile,
+                    swamp_grass_tile, swamp_grass_tile,
+                    forest_tile,
+                    misty_mtn_tile, volcano_tile,
+                    red_desert_tile, red_desert_tile, red_desert_tile]
+
+terrain_themes = {
+    'normal' : normal_tile_types,
+    'fiery' : fiery_tile_types
+}
+
+themed_grass_tiles = {
+    'normal' : grass_tile,
+    'fiery' : swamp_grass_tile
+}
+
+weighted_tile_types = normal_tile_types
+mtn_tiles = [mountain_tile, misty_mtn_tile, volcano_tile]
+lqd_tiles = [ocean_tile, lava_tile]
 throwable_imgs = [bomb_mini_img]
+
+class AStarNode:
+    def __init__(self, coords, parent=None, child=None, target_coords=(0, 0)):
+        self.coords = coords
+        self.target_coords = target_coords
+        self.parent = parent
+        self.child = child
+        self.g_score = self.get_g_score(parent)
+        if not parent:
+            self.h_score = self.get_h_score(self.coords)
+        else:
+            self.h_score = self.get_h_score(self.target_coords)
+        self.f_score = self.g_score + self.h_score
+
+    def euclid_dist(self, other_coords):
+        ocx = other_coords[0]
+        ocy = other_coords[1]
+        return (ocx - self.coords[0]) ** 2 + (ocy - self.coords[1]) ** 2
+
+    def get_g_score(self, parent_node):
+        if parent_node:
+            return (parent_node.g_score) + self.euclid_dist(parent_node.coords)
+        else:
+            return 0
+
+    def get_h_score(self, end_tile_coords):
+        return self.euclid_dist(end_tile_coords)
+
+    def reset_scores(self, final_coords):
+        self.g_score = self.get_g_score(self.parent)
+        self.h_score = self.get_h_score(final_coords)
+        self.f_score = self.g_score + self.h_score
+
+
 
 
 class Move:
@@ -141,11 +201,13 @@ class Tile:
     def __init__(self, occupied, terr_type, rect, tx, ty):
         self.occupied = occupied
         self.terrain = terr_type
+        self.image = None
         self.seed_val = 0
         self.aimed_at = False
         self.rect = rect
         self.tx = tx
         self.ty = ty
+        self.is_exit = False
 
 
     def change_occ(self):
@@ -164,7 +226,7 @@ class Tile:
     def dist_to(self, other_tile):
         otx = other_tile.tx
         oty = other_tile.ty
-        dist = math.sqrt((otx - self.tx)**2 + (oty - self.ty)**2)
+        dist = (otx - self.tx)**2 + (oty - self.ty)**2
         return dist
 
 class Exit(Tile):
@@ -220,10 +282,8 @@ class Actor:
         self.alive = True
         self.xp_on_death = xp_on_death
         self.item_list = item_list
-        self.throw_aim = Fake_Tile(px, py)
+        self.throw_aim = (self.x_pos, self.y_pos)
         self.item_sel = Item("none", self.x_pos, self.y_pos, self, "null")
-
-
 
     def move_actor(self, direction):
         global GAME_SIZE
@@ -233,43 +293,22 @@ class Actor:
         sx = LEVEL_MAP.scr_x
         sy = LEVEL_MAP.scr_y
         terrain = LEVEL_MAP.curr_screen.tile_map
-        if not self.locked:
+        if isinstance(self, Enemy):
+            print("Hey, trying to move the enemy randomly...")
             if direction == 8:
                 if (py - 1) >= 0 and check_tile_okay(terrain, px, py - 1):
                     old_tile = terrain[px][py]
                     old_tile.occupied = False
-                    tile = terrain[px][py-1]
+                    tile = terrain[px][py - 1]
                     tile.occupied = True
                     self.y_pos = self.y_pos - 1
-                elif (py - 1) < 0 and (LEVEL_MAP.scr_y >= 1):
-                    print("\n-----------------\nDETECTING AN UP TRANSITION\n--------------------\n")
-                    old_tile = terrain[px][py]
-                    old_tile.occupied = False
-                    old_terr = LEVEL_MAP.curr_screen
-                    old_terr.wipe_screen()
-                    LEVEL_MAP.change_screen(self, sx, sy - 1)
-                    terrain = LEVEL_MAP.curr_screen.tile_map
-                    tile = terrain[px][GAME_SIZE - 1]
-                    tile.occupied = True
-                    self.y_pos = GAME_SIZE - 1
             elif direction == 2:
                 if (py + 1) < GAME_SIZE and check_tile_okay(terrain, px, py + 1):
                     old_tile = terrain[px][py]
                     old_tile.occupied = False
-                    tile = terrain[px][py+1]
+                    tile = terrain[px][py + 1]
                     tile.occupied = True
                     self.y_pos = self.y_pos + 1
-                elif (py + 1) >= GAME_SIZE and (sy < LEVEL_MAP.map_height - 1):
-                    print("\n-----------------\nDETECTING A DOWN TRANSITION\n--------------------\n")
-                    old_tile = terrain[px][py]
-                    old_tile.occupied = False
-                    old_terr = LEVEL_MAP.curr_screen
-                    old_terr.wipe_screen()
-                    LEVEL_MAP.change_screen(self, sx, sy + 1)
-                    terrain = LEVEL_MAP.curr_screen.tile_map
-                    tile = terrain[px][0]
-                    tile.occupied = True
-                    self.y_pos = 0
             elif direction == 4:
                 if (px - 1) >= 0 and check_tile_okay(terrain, px - 1, py):
                     old_tile = terrain[px][py]
@@ -277,17 +316,6 @@ class Actor:
                     tile = terrain[px - 1][py]
                     tile.occupied = True
                     self.x_pos = self.x_pos - 1
-                elif (px - 1) < 0 and (sx > 0):
-                    print("We're correctly detecting a left screen transition")
-                    old_tile = terrain[px][py]
-                    old_tile.occupied = False
-                    old_terr = LEVEL_MAP.curr_screen
-                    old_terr.wipe_screen()
-                    LEVEL_MAP.change_screen(self, sx - 1, sy)
-                    terrain = LEVEL_MAP.curr_screen.tile_map
-                    tile = terrain[GAME_SIZE - 1][py]
-                    tile.occupied = True
-                    self.x_pos = GAME_SIZE - 1
             elif direction == 6:
                 if (px + 1) < GAME_SIZE and check_tile_okay(terrain, px + 1, py):
                     old_tile = terrain[px][py]
@@ -295,17 +323,6 @@ class Actor:
                     tile = terrain[px + 1][py]
                     tile.occupied = True
                     self.x_pos = self.x_pos + 1
-                elif (px + 1) >= GAME_SIZE and (sx < LEVEL_MAP.map_width - 1):
-                    print("We're correctly detecting a right screen transition")
-                    old_tile = terrain[px][py]
-                    old_tile.occupied = False
-                    old_terr = LEVEL_MAP.curr_screen
-                    old_terr.wipe_screen()
-                    LEVEL_MAP.change_screen(self, sx + 1, sy)
-                    terrain = LEVEL_MAP.curr_screen.tile_map
-                    tile = terrain[0][py]
-                    tile.occupied = True
-                    self.x_pos = 0
             elif direction == 1:
                 if (px - 1) >= 0 and (py + 1) < GAME_SIZE and check_tile_okay(terrain, px - 1, py + 1):
                     old_tile = terrain[px][py]
@@ -340,12 +357,23 @@ class Actor:
                     self.y_pos = self.y_pos - 1
 
     def move_to(self, tile):
+        print("Trying to move an enemy directly to a tile")
+        print("Old tile: {0}\tNew tile: {1}".format((self.x_pos, self.y_pos), (tile.tx, tile.ty)))
         terrain = LEVEL_MAP.curr_screen.tile_map
         old_tile = terrain[self.x_pos][self.y_pos]
         old_tile.occupied = False
         self.x_pos = tile.tx
         self.y_pos = tile.ty
         tile.occupied = True
+
+    def move_to_coords(self, coords):
+        terrain = LEVEL_MAP.curr_screen.tile_map
+        old_tile = terrain[self.x_pos][self.y_pos]
+        old_tile.occupied = False
+        new_tile = terrain[coords[0]][coords[1]]
+        self.x_pos = new_tile.tx
+        self.y_pos = new_tile.ty
+        new_tile.occupied = True
 
     def target(self):
         global MSG_TIME
@@ -426,11 +454,139 @@ class Player(Actor):
         move_list = [rifle_move, knife_move]
         self.move_choice = 0
         self.leveling = False
+        self.scr_x = 0
+        self.scr_y = 0
         super().__init__(px, py, 100, 100, move_list, "Player", 1, 100, item_list)
 
     def move_player(self, direction):
-        self.move_actor(direction)
-
+        global GAME_SIZE
+        global LEVEL_MAP
+        py = self.y_pos
+        px = self.x_pos
+        sx = LEVEL_MAP.scr_x
+        sy = LEVEL_MAP.scr_y
+        terrain = LEVEL_MAP.curr_screen.tile_map
+        if not self.locked and isinstance(self, Player):
+            if direction == 8:
+                okay = check_tile_okay(terrain, px, py - 1)
+                if (py - 1) >= 0 and okay:
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px][py - 1]
+                    tile.occupied = True
+                    self.y_pos = self.y_pos - 1
+                elif (py - 1) < 0 and (LEVEL_MAP.scr_y >= 1):
+                    print("\n-----------------\nDETECTING AN UP TRANSITION\n--------------------\n")
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    old_terr = LEVEL_MAP.curr_screen
+                    old_terr.wipe_screen()
+                    LEVEL_MAP.change_screen(self, sx, sy - 1)
+                    terrain = LEVEL_MAP.curr_screen.tile_map
+                    tile = terrain[px][GAME_SIZE - 1]
+                    tile.occupied = True
+                    self.y_pos = GAME_SIZE - 1
+                    self.scr_y = self.scr_y - 1
+                else:
+                    print("Couldn't move there. Check tile returns: {0}".format(okay))
+            elif direction == 2:
+                okay = check_tile_okay(terrain, px, py + 1)
+                if (py + 1) < GAME_SIZE and okay:
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px][py + 1]
+                    tile.occupied = True
+                    self.y_pos = self.y_pos + 1
+                elif (py + 1) >= GAME_SIZE and (sy < LEVEL_MAP.map_height - 1):
+                    print("\n-----------------\nDETECTING A DOWN TRANSITION\n--------------------\n")
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    old_terr = LEVEL_MAP.curr_screen
+                    old_terr.wipe_screen()
+                    LEVEL_MAP.change_screen(self, sx, sy + 1)
+                    terrain = LEVEL_MAP.curr_screen.tile_map
+                    tile = terrain[px][0]
+                    tile.occupied = True
+                    self.y_pos = 0
+                    self.scr_y = self.scr_y + 1
+                else:
+                    print("Couldn't move there. Check tile returns: {0}".format(okay))
+            elif direction == 4:
+                okay = check_tile_okay(terrain, px - 1, py)
+                if (px - 1) >= 0 and okay:
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px - 1][py]
+                    tile.occupied = True
+                    self.x_pos = self.x_pos - 1
+                elif (px - 1) < 0 and (sx > 0):
+                    print("We're correctly detecting a left screen transition")
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    old_terr = LEVEL_MAP.curr_screen
+                    old_terr.wipe_screen()
+                    LEVEL_MAP.change_screen(self, sx - 1, sy)
+                    terrain = LEVEL_MAP.curr_screen.tile_map
+                    tile = terrain[GAME_SIZE - 1][py]
+                    tile.occupied = True
+                    self.x_pos = GAME_SIZE - 1
+                    self.scr_x = self.scr_x - 1
+                else:
+                    print("Couldn't move there. Check tile returns: {0}".format(okay))
+            elif direction == 6:
+                okay = check_tile_okay(terrain, px + 1, py)
+                if (px + 1) < GAME_SIZE and okay:
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px + 1][py]
+                    tile.occupied = True
+                    self.x_pos = self.x_pos + 1
+                elif (px + 1) >= GAME_SIZE and (sx < LEVEL_MAP.map_width - 1):
+                    print("We're correctly detecting a right screen transition")
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    old_terr = LEVEL_MAP.curr_screen
+                    old_terr.wipe_screen()
+                    LEVEL_MAP.change_screen(self, sx + 1, sy)
+                    terrain = LEVEL_MAP.curr_screen.tile_map
+                    tile = terrain[0][py]
+                    tile.occupied = True
+                    self.x_pos = 0
+                    self.scr_x = self.scr_x + 1
+                else:
+                    print("Couldn't move there. Check tile returns: {0}".format(okay))
+            elif direction == 1:
+                if (px - 1) >= 0 and (py + 1) < GAME_SIZE and check_tile_okay(terrain, px - 1, py + 1):
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px - 1][py + 1]
+                    tile.occupied = True
+                    self.x_pos = self.x_pos - 1
+                    self.y_pos = self.y_pos + 1
+            elif direction == 3:
+                if (px + 1) < GAME_SIZE and (py + 1) < GAME_SIZE and check_tile_okay(terrain, px + 1, py + 1):
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px + 1][py + 1]
+                    tile.occupied = True
+                    self.x_pos = self.x_pos + 1
+                    self.y_pos = self.y_pos + 1
+            elif direction == 7:
+                if (px - 1) >= 0 and (py - 1) >= 0 and check_tile_okay(terrain, px - 1, py - 1):
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    tile = terrain[px - 1][py - 1]
+                    tile.occupied = True
+                    self.x_pos = self.x_pos - 1
+                    self.y_pos = self.y_pos - 1
+            elif direction == 9:
+                if (px + 1) < GAME_SIZE and (py - 1) >= 0 and check_tile_okay(terrain, px + 1, py - 1):
+                    old_tile = terrain[px][py]
+                    old_tile.occupied = False
+                    new_tile = terrain[px + 1][py - 1]
+                    new_tile.occupied = True
+                    self.x_pos = self.x_pos + 1
+                    self.y_pos = self.y_pos - 1
 
     def level_up(self):
         global MSG
@@ -466,20 +622,22 @@ CONTINUING_PLAYER = NULL_PLAYER
 
 
 class Enemy(Actor):
-    def __init__(self, type, ex, ey, name, screenx, screeny):
+    def __init__(self, typeint, ex, ey, name, screenx, screeny):
         enemy_imgs = [pygame.image.load("ricardo_overlay.png"),
                       pygame.image.load("MGM-D_overlay.png"),
                       pygame.image.load("Player2-Overlay_small.png")]
-        self.type = type
-        self.image = enemy_imgs[self.type]
         knife_move = Move(self, "Knife (1 spc)", NULL_TGT, -15, 1)
-        move_list = [knife_move]
+        crossbow_move = Move(self, "Crossbow (2 spc)", NULL_TGT, -10, 2)
+        enemy_moves = [knife_move, crossbow_move]
+        self.type = typeint
+        self.image = enemy_imgs[self.type]
+        self.move = enemy_moves[self.type]
         self.path = []
         self.visited_tiles_check = []
         self.scr_pos = (screenx, screeny)
         self.last_seen_player_x = 0
         self.last_seen_player_y = 0
-        super().__init__(ex, ey, 25, 25, move_list, name, 1, 15, [])
+        super().__init__(ex, ey, 25, 25, [self.move], name, 1, 15, [])
 
 
 class MapScreen:
@@ -488,11 +646,12 @@ class MapScreen:
         self.scr_row = row
         self.scr_col = col
         self.enemies = enemies
+        self.is_exit_screen = False
 
-    def display_screen(self, player):
+    def display_screen(self, player, theme='normal'):
         global GAME_SIZE
         self.fix_seeded_tiles()
-        draw_grid(self.tile_map, GAME_SIZE, player, self.enemies)
+        draw_grid(self, GAME_SIZE, player, self.enemies, theme)
 
     def fix_seeded_tiles(self):
         for r in self.tile_map:
@@ -501,19 +660,21 @@ class MapScreen:
                 c.set_terr(c.seed_val % len(weighted_tile_types))
 
     def init_enemies(self):
-        for i in self.tile_map:
-            for j in i:
-                for e in self.enemies:
-                    if e.x_pos == j.tx and e.y_pos == j.ty:
-                        j.set_occ(True)
-                        continue
+        for e in self.enemies:
+            etile = self.tile_map[e.x_pos][e.y_pos]
+            etile.set_occ(True)
+        # for e in self.enemies: ** CONSIDER REMOVING THE TWO OUTER FOR LOOPS, SEEMS UNNECESSARY **
+
 
     def wipe_screen(self):
-        for r in self.tile_map:
+        blank_map = self.tile_map
+        for r in blank_map:
             for c in r:
                 c.set_occ(False)
+        self.tile_map = blank_map
 
-    def init_scr_enemies(self, num_enemies=3, enemytypes=[1, 1, 1]):
+    def init_scr_enemies(self, num_enemies=3, enemytypes=[0, 0, 1]):
+        global ENEMY_NAMES
         global GAME_SIZE
         self.wipe_screen()
         if len(self.enemies) == 0:
@@ -525,7 +686,7 @@ class MapScreen:
                     ey = random.randint(1, GAME_SIZE - 1)
                 etile = self.tile_map[ex][ey]
                 etile.set_occ(True)
-                self.enemies.append(Enemy(enemytypes[i], ex, ey, 'Test', self.scr_row, self.scr_col))
+                self.enemies.append(Enemy(enemytypes[i], ex, ey, ENEMY_NAMES[enemytypes[i]], self.scr_row, self.scr_col))
         else:
             for e in self.enemies:
                 etile = self.tile_map[e.x_pos][e.y_pos]
@@ -543,12 +704,31 @@ class MapScreen:
 
 
 class Map:
-    def __init__(self, screens=[], map_width=3, map_height=3, state=0):
+    def __init__(self, screens=[], map_width=3, map_height=3, state=0, player=None, theme=None):
         self.map_width = map_width
         self.map_height = map_height
-        self.scr_x = 0
-        self.scr_y = 0
+        self.theme = theme
+        if not player:
+            self.scr_x = 0
+            self.scr_y = 0
+        else:
+            self.scr_x = player.scr_x
+            self.scr_y = player.scr_y
+        # Here I will set the coordinates of the screen that the exit is on
+        if self.scr_x == 0:
+            exit_scr_x = random.randint(1, self.map_width - 1)
+            exit_scr_y = random.randint(0, self.map_height - 1)
+        elif self.scr_x == self.map_width - 1:
+            exit_scr_x = random.randint(0, self.map_width - 2)
+            exit_scr_y = random.randint(0, self.map_height - 1)
+        else:
+            exit_scr_x = random.randint(0, self.map_width - 1)
+            exit_scr_y = random.randint(0, self.map_height - 1)
+        ######## This is where the EXIT SCREEN coordinates are set ###########
+        self.exit_scr_coords = (exit_scr_x, exit_scr_y)
+        self.exit_coords = (random.randint(0, GAME_SIZE - 1), random.randint(0, GAME_SIZE - 1))
         self.state = state
+
         if len(screens) == 0:
             self.screens = self.init_map()
             self.curr_screen = self.screens[self.scr_x][self.scr_y]
@@ -557,9 +737,14 @@ class Map:
             self.screens = screens
             self.curr_screen = self.screens[self.scr_x][self.scr_y]
 
+        exit_scr = self.screens[self.exit_scr_coords[0]][self.exit_scr_coords[1]]
+        exit_scr.is_exit_screen = True
+        exit_tile = exit_scr.tile_map[self.exit_coords[0]][self.exit_coords[1]]
+        exit_tile.is_exit = True
+
 
     def display_screen(self, player, elist):
-        self.curr_screen.display_screen(player)
+        self.curr_screen.display_screen(player, self.theme)
 
     def change_screen(self, player, new_sx, new_sy):
         self.curr_screen.wipe_screen()
@@ -567,7 +752,7 @@ class Map:
         self.scr_y = new_sy
         new_screen = self.screens[new_sx][new_sy]
         new_screen.wipe_screen()
-        new_screen.init_scr_enemies()
+        new_screen.init_enemies()
         new_screen.display_screen(player)
         # pygame.display.update()
         self.curr_screen = new_screen
@@ -579,26 +764,34 @@ class Map:
 
     def init_map(self):
         global GAME_SIZE
+        global weighted_tile_types
+        global terrain_themes
+
+        if not self.theme:
+            self.theme = 'normal'
+        weighted_tile_types = terrain_themes[self.theme]
         map_screens = []
 
         rand_map_row = random.randint(0, 3)
         rand_map_col = random.randint(0, 3)
 
-        for h in range(self.map_height):
+        for row in range(self.map_height):
             screen_row = []
-            for w in range(self.map_width):
+            for col in range(self.map_width):
                 scr_tiles = []
                 rand_scr_row = random.randint(0, 100) % GAME_SIZE
                 rand_scr_col = random.randint(0, 100) % GAME_SIZE
                 #### THIS IS WHERE THE TERRAIN GETS SET ####
 
-                for y in range(GAME_SIZE):
+                for trow in range(GAME_SIZE):
                     new_row = []
-                    for x in range(GAME_SIZE):
-                        new_row.append(Tile(False, weighted_tile_types[0], pygame.Rect(x * 50, y * 50, 50, 50), x, y))
+                    for tcol in range(GAME_SIZE):
+                        new_tile = Tile(False, weighted_tile_types[0], pygame.Rect(trow * 50, tcol * 50, 50, 50), trow, tcol)
+                        new_row.append(new_tile)
+
                     scr_tiles.append(new_row)
 
-                new_screen = MapScreen(scr_tiles, h, w, [])
+                new_screen = MapScreen(scr_tiles, row, col, [])
                 new_screen.tile_map = plant_seed(rand_scr_col, rand_scr_row, random.randint(1, 5), new_screen)
                 new_screen.tile_map = fix_null_tiles(new_screen.tile_map)
                 new_screen.init_scr_enemies()
@@ -656,6 +849,7 @@ def grow_seed(curr_x, curr_y, seed_tile, level, tile_map):
         return tile_map
 
 def fix_null_tiles(tile_map):
+    global weighted_tile_types
     fixed_map = tile_map
     for row in fixed_map:
         for tile in row:
@@ -668,6 +862,8 @@ def fix_null_tiles(tile_map):
                     tile.seed_val = int(avg + random.randint(0, 2))
                 elif avg > 1:
                     tile.seed_val = int(avg + random.randint(-1, 1))
+            tile.image = tile.image = weighted_tile_types[tile.seed_val % len(weighted_tile_types)]
+
     return fixed_map
 
 def get_surrounding_avgs(current_tile, tile_map):
@@ -705,17 +901,21 @@ def get_surrounding_avgs(current_tile, tile_map):
 
 def check_tile_okay(tiles_list, row, col):
     global GAME_SIZE
+    global lqd_tiles, mtn_tiles
     if not (0 <= row < GAME_SIZE) or not (0 <= col < GAME_SIZE):
         return False
     else:
-        print("Checking values at x: " + str(row) + " y: " + str(col))
+        #print("Checking values at x: " + str(row) + " y: " + str(col))
         t = tiles_list[row][col]
-        if t.terrain == ocean_tile or t.terrain == mountain_tile:
-            print("the tile being checked is impassable")
+        if t.image in lqd_tiles or t.image in mtn_tiles:
+            print("the tile at {0} is impassable".format((row, col)))
             return False
         elif t.occupied:
-            print("the tiles is currently occupied")
+            print("the tile at {0} is currently occupied".format((row, col)))
             return False
+        elif t.is_exit:
+            print("This is the exit tile! If you're the player, you win!")
+            return True
         else:
             # print("the tile being checked is free!")
             return True
@@ -828,7 +1028,7 @@ def get_index(row, col):
 # it returns an integer: if -1, done animating; if >= 0, then used to continue animation
 def animate(img_code, param_func_x, param_func_y, current_frame, t1, t2):
     global throwable_imgs
-    terrain = LEVEL_MAP.screens[LEVEL_MAP.curr_screen]
+    terrain = LEVEL_MAP.curr_screen.tile_map
     afterfx = True
     img = throwable_imgs[img_code]
     t = t1 + (float(current_frame) / 100)
@@ -1109,7 +1309,7 @@ def level_up_screen(player):
     else:
         LukSurf, LukRect = text_objects(" LUK ", menufont3, 0)
     TextSurf3, TextRect3 = text_objects(stat_str, menufont3, 0)
-    TextSurf4, TextRect4 = text_objects("Level: " + str(player.level - 1) + " -> " + str(player.level), menufont2, 0)
+    TextSurf4, TextRect4 = text_objects("Rank: " + str(player.level - 1) + " -> " + str(player.level), menufont2, 0)
     TextRect1.center = (MENU_COORD_X + 150, MENU_COORD_Y + 80)
     # TextRect2.center = (MENU_COORD_X + 175, MENU_COORD_Y + 110)
     StrRect.center = (MENU_COORD_X + 40, MENU_COORD_Y + 110)
@@ -1271,39 +1471,49 @@ def wrap_text(text, pos, max, font, color=pygame.Color('white')):
         y += word_height  # Start on new row.
 
 
-def draw_grid(terr, size, player, enemylist):
+def draw_grid(curr_screen, size, player, enemylist, theme='normal'):
+    global blaze_overlay
+    global grass_tile
+    global black
     rows = size
     cols = size
+    terr = curr_screen.tile_map
     for r in range(rows):
         for c in range(cols):
             tile = pygame.Rect(((55 * r) + OFFSET, (55 * c), 50, 50))
             tiles.append(tile)
             # print("Rows: " + str(len(terr)) + "\tCols: " + str(len(terr[0])))
-            tertype = terr[r][c]
-            screen.blit(weighted_tile_types[tertype.seed_val % len(weighted_tile_types)], tile)
+            tile_obj = terr[r][c]
+            if tile_obj.image == blaze_overlay:
+                tile_obj.image = themed_grass_tiles[theme]
+
+            screen.blit(tile_obj.image, tile)
+
+            if tile_obj.is_exit:
+                tile_obj.image = grass_tile
+                screen.blit(portal_overlay, tile)
+
             if player.x_pos == r and player.y_pos == c:
                 screen.blit(player.image, tile)
-            if tertype.aimed_at:
+            if tile_obj.aimed_at:
                 screen.blit(aim_highlight, tile)
 
     for e in enemylist:
         ex = e.x_pos
         ey = e.y_pos
+        tile_obj = terr[ex][ey]
+        tile = pygame.Rect(((55 * ex) + OFFSET, (55 * ey), 50, 50))
         if e.hitpoints > 0:
-            tile = pygame.Rect(((55 * ey) + OFFSET, (55 * ex), 50, 50))
             screen.blit(e.image, tile)
-            tertype = terr[ey][ex]
-            if tertype.aimed_at:
+            if tile_obj.aimed_at:
                 e.target()
         else:
             print("Draw grid notices dead enemy")
             # player.add_xp(e.xp_on_death)
-            tertype.change_occ()
+            tile_obj.change_occ()
             enemylist.remove(e)
         if e in targeted:
             screen.blit(tgt_icon, tile)
-
-
 
 
 # build a recursive list to get a path to player
@@ -1313,108 +1523,136 @@ def move_near_player(player, enemy, moved):
     dy = math.fabs(enemy.y_pos - player.y_pos)
     path_to_player = enemy.path
     at = enemy.last_seen_player
-    # print("Where was I looking? (" + str(at.tx) + ", " + str(at.ty) + ")")
-    # print("Where is the player? (" + str(player.x_pos) + ", " + str(player.y_pos) + ")")
-    if not path_to_player or moved:
+    if not path_to_player: #or moved:
         # print(enemy.name + " had " + (lambda p: "no path" if not p else "a path")(path_to_player) + " and player " + (lambda m: "did" if m else "didn't")(moved) + " move.")
-        path_to_player = build_paths_rec(enemy, player, [])
+        path_to_player = enemy_astar_pathfinding(enemy, player)
     # will put more code here to store and continue paths if the player does/doesn't move
     first_move = path_to_player[0]
-    path_to_player.remove(path_to_player[0])
+    enemy.move_to_coords(first_move)
+    path_to_player.remove(first_move)
     enemy.path = path_to_player
-    enemy.move_to(first_move)
+
+#
+# def build_paths_rec(actor, target, paths_list):
+#     # print(actor.name + " is still trying to build a path.")
+#     terrain = LEVEL_MAP.curr_screen.tile_map
+#     ax = actor.x_pos
+#     ay = actor.y_pos
+#     tx = target.x_pos
+#     ty = target.y_pos
+#     if not paths_list:
+#         poss_paths = add_possibles(actor, [])
+#         if poss_paths:
+#             for i in poss_paths:
+#                 paths_list.append(i)
+#             # print("paths_list first addition: " + str(len(paths_list)))
+#             return build_paths_rec(actor, target, paths_list)
+#         else:
+#             print("no possible paths found. staying still at {0}, {1}".format(ax, ay))
+#             return [terrain[ax][ay]]
+#     else:
+#         for path in paths_list:
+#             # print("we have a paths_list already! let's find new possibilities")
+#             new_paths = add_possibles(actor, path)
+#             paths_list.remove(path)
+#             if new_paths:
+#                 for np in new_paths:
+#                     if np[len(np) - 1].dist_to(terrain[tx][ty]) <= 1:
+#                         # print("FOUND A PATH")
+#                         return np
+#                     else:
+#                         if not (np in paths_list):
+#                             paths_list.append(np)
+#                             # print("appending a path to list")
+#         return build_paths_rec(actor, target, paths_list)
+#
+#
+# def add_possibles(actor, path):
+#     terrain = LEVEL_MAP.curr_screen.tile_map
+#     if not path:
+#         act_tile = terrain[actor.x_pos][actor.y_pos]
+#         actor.visited_tiles_check.append(act_tile)
+#     else:
+#         act_tile = path[(len(path) - 1)]
+#         for t in path:
+#             if not (t in actor.visited_tiles_check):
+#                 actor.visited_tiles_check.append(t)
+#     tx = act_tile.tx
+#     ty = act_tile.ty
+#     new_paths = []
+#     surr_coords = [(tx + 1, ty), (tx, ty - 1), (tx - 1, ty), (tx, ty + 1)]
+#     okay_surr_tiles = []
+#     for coord in surr_coords:
+#         if check_tile_okay(terrain, coord[0], coord[1]):
+#             okay_surr_tiles.append(terrain[coord[0]][coord[1]])
+#             print("Tile at {0}, {1} is okay".format(coord[0], coord[1]))
+#     for t in okay_surr_tiles:
+#         if t in actor.visited_tiles_check:
+#             print("Already checked this tile!")
+#             new_paths.append(path + t)
+#     return new_paths
+
+def get_adj_nodes(curr_node, tgtcoord):
+    global LEVEL_MAP
+    tilemap = LEVEL_MAP.curr_screen.tile_map
+    curr_coords = curr_node.coords
+    child_list = []
+    cx = curr_coords[0]
+    cy = curr_coords[1]
+    eight_adj_coords = [(cx - 1, cy - 1), (cx, cy - 1), (cx + 1, cy - 1),
+                        (cx - 1, cy), (cx + 1, cy),
+                        (cx - 1, cy + 1), (cx, cy + 1), (cx + 1, cy + 1)]
+    for coord in eight_adj_coords:
+        if check_tile_okay(tilemap, coord[0], coord[1]):
+            new_node = AStarNode(coord, parent=curr_node, target_coords=tgtcoord)
+            child_list.append(new_node)
+    return child_list
+
+def enemy_astar_pathfinding(enemy, target):
+    openlist = []
+    closedlist = []
+    start_coord = (enemy.x_pos, enemy.y_pos)
+    target_coord = (target.x_pos, target.y_pos)
+    start_node = AStarNode(start_coord)
+    openlist.append(start_node)
+    i = 0
+
+    while len(openlist) > 0:
+        print("Starting evaluation #{0} for this enemy".format(i + 1))
+        curr_node = min(openlist, key=attrgetter('f_score'))
+        open_len = len(openlist)
+        openlist.remove(curr_node)
+        open_len_after_rem = len(openlist)
+        print("Removing current node. Length before: {0}\tLength after: {1}".format(open_len, open_len_after_rem))
+        closedlist.append(curr_node)
+
+        if curr_node.coords == target_coord:
+            print("Hey you found the target!")
+            path = []
+            curr = curr_node
+            while curr is not None:
+                path.append(curr.coords)
+                curr = curr_node.parent
+            return path[::-1] #returning the reversed path
+
+        children = get_adj_nodes(curr_node, target_coord)
+        for child in children:
+            if child in closedlist:
+                continue
+            child.reset_scores(target_coord)
+
+            for node in openlist:
+                if node == child and child.g_score > node.g_score:
+                    continue
+                else:
+                    print("Found a new, better node to try")
+                    openlist.remove(node)
+                    openlist.append(child)
+
+        i+=1
+    return [start_coord]
 
 
-def build_paths_rec(actor, target, paths_list):
-    # print(actor.name + " is still trying to build a path.")
-    terrain = LEVEL_MAP.curr_screen.tile_map
-    ax = actor.x_pos
-    ay = actor.y_pos
-    tx = target.x_pos
-    ty = target.y_pos
-    if not paths_list:
-        poss_paths = add_possibles(actor, [])
-        if poss_paths:
-            for i in poss_paths:
-                paths_list.append(i)
-            # print("paths_list first addition: " + str(len(paths_list)))
-            return build_paths_rec(actor, target, paths_list)
-        else:
-            # print("no possible paths found. staying still")
-            return [terrain[ax][ay]]
-    else:
-        for path in paths_list:
-            # print("we have a paths_list already! let's find new possibilities")
-            new_paths = add_possibles(actor, path)
-            paths_list.remove(path)
-            if new_paths:
-                for np in new_paths:
-                    if np[len(np) - 1].dist_to(terrain[tx][ty]) <= 1:
-                        # print("FOUND A PATH")
-                        return np
-                    else:
-                        if not (np in paths_list):
-                            paths_list.append(np)
-                            # print("appending a path to list")
-        return build_paths_rec(actor, target, paths_list)
-
-
-def add_possibles(actor, path):
-    terrain = LEVEL_MAP.curr_screen.tile_map
-    if not path:
-        act_tile = terrain[actor.x_pos][actor.y_pos]
-        actor.visited_tiles_check.append(act_tile)
-    else:
-        act_tile = path[(len(path) - 1)]
-        for t in path:
-            if not (t in actor.visited_tiles_check):
-                actor.visited_tiles_check.append(t)
-    tx = act_tile.tx
-    ty = act_tile.ty
-    new_paths = []
-    new_path_count = 0
-    # add RIGHT move poss.
-    if check_tile_okay(terrain, tx + 1, ty):
-        new_tile = terrain[tx + 1][ty]
-        if new_tile in actor.visited_tiles_check:
-            print(".")
-        else:
-            path.append(new_tile)
-            new_paths.append(path)
-            actor.visited_tiles_check.append(new_tile)
-            new_path_count = new_path_count + 1
-    # add UP move poss.
-    if check_tile_okay(terrain, tx, ty - 1):
-        new_tile = terrain[tx][ty-1]
-        if new_tile in actor.visited_tiles_check:
-            print("..")
-        else:
-            path.append(new_tile)
-            new_paths.append(path)
-            actor.visited_tiles_check.append(new_tile)
-            new_path_count = new_path_count + 1
-    # add LEFT move poss.
-    if check_tile_okay(terrain, tx - 1, ty):
-        new_tile = terrain[tx - 1][ty]
-        if new_tile in actor.visited_tiles_check:
-            print("...")
-        else:
-            path.append(new_tile)
-            new_paths.append(path)
-            actor.visited_tiles_check.append(new_tile)
-            new_path_count = new_path_count + 1
-    # add DOWN move poss.
-    if check_tile_okay(terrain, tx, ty + 1):
-        new_tile = terrain[tx][ty + 1]
-        if new_tile in actor.visited_tiles_check:
-            print("....")
-        else:
-            path.append(new_tile)
-            new_paths.append(path)
-            actor.visited_tiles_check.append(new_tile)
-            new_path_count = new_path_count + 1
-    # print(actor.name + " found " + str(new_path_count) + " new paths to try")
-    return new_paths
 
 
 def enemy_attack(player, enemy):
@@ -1428,17 +1666,18 @@ def enemy_turn(state, player, enemylist):
     terrain = LEVEL_MAP.curr_screen.tile_map
     for e in enemylist:
         p_tile = terrain[player.x_pos][player.y_pos]
-        dist = math.sqrt(((e.x_pos - player.x_pos)**2) + ((e.y_pos - player.y_pos)**2))
-        if 1 < math.floor(dist) <= 4:
+
+        dist = (e.x_pos - player.x_pos)**2 + (e.y_pos - player.y_pos)**2
+        if math.floor(dist) <= (e.move.range ** 2):
+            enemy_attack(player, e)
+        elif 1 < dist <= 25:
             moved = True
             e.last_seen_player = p_tile
             move_near_player(player, e, moved)
-        elif math.floor(dist) <=1:
-            enemy_attack(player, e)
         else:
             if e.path:
                 e.move_to(e.path[0])
-                e.path.remove(e.path[0])
+                e.path = e.path[1:]
             else:
                 e.move_actor(random.choice(directions))
 
@@ -1706,7 +1945,8 @@ def player_throw_aim(key, player, enemy_list):
     global LEVEL_MAP
     terrain = LEVEL_MAP.curr_screen.tile_map
     range = math.floor((player.Strength + 1) / 2)
-    tgt = player.throw_aim
+    aim_coord = player.throw_aim
+    tgt = terrain[aim_coord[0]][aim_coord[1]]
 
     if key == pygame.K_SPACE:
         clear_aim()
@@ -1725,30 +1965,42 @@ def player_throw_aim(key, player, enemy_list):
             if dist_to_player(player, tgt.tx - 1, tgt.ty) <= range \
                     and 0 <= tgt.tx - 1 < GAME_SIZE \
                     and 0 <= tgt.ty < GAME_SIZE:
-                    player.throw_aim = terrain[tgt.tx - 1][tgt.ty]
-                    draw_aim(4, player, 1)
-                    check_target(player, 4, enemy_list)
+                old_aim = player.throw_aim
+                player.throw_aim = (tgt.tx - 1, tgt.ty)
+                print("Old TGT: {0}\t New TGT: {1}".format(old_aim, player.throw_aim))
+                aim_tile = terrain[tgt.tx - 1][tgt.ty]
+                draw_aim(4, player, 1)
+                check_target(player, 4, enemy_list)
     elif key == pygame.K_RIGHT:
             if dist_to_player(player, tgt.tx + 1, tgt.ty) <= range \
                     and 0 <= tgt.tx + 1 < GAME_SIZE \
                     and 0 <= tgt.ty < GAME_SIZE:
-                    player.throw_aim = terrain[tgt.tx + 1][tgt.ty]
-                    draw_aim(6, player, 1)
-                    check_target(player, 6, enemy_list)
+                old_aim = player.throw_aim
+                player.throw_aim = (tgt.tx + 1, tgt.ty)
+                print("Old TGT: {0}\t New TGT: {1}".format(old_aim, player.throw_aim))
+                aim_tile = terrain[tgt.tx + 1][tgt.ty]
+                draw_aim(6, player, 1)
+                check_target(player, 6, enemy_list)
     elif key == pygame.K_UP:
             if dist_to_player(player, tgt.tx, tgt.ty - 1) <= range \
                     and 0 <= tgt.tx < GAME_SIZE \
                     and 0 <= tgt.ty - 1 < GAME_SIZE:
-                    player.throw_aim = terrain[tgt.tx][tgt.ty - 1]
-                    draw_aim(8, player, 1)
-                    check_target(player, 8, enemy_list)
+                old_aim = player.throw_aim
+                player.throw_aim = (tgt.tx, tgt.ty -1)
+                print("Old TGT: {0}\t New TGT: {1}".format(old_aim, player.throw_aim))
+                aim_tile = terrain[tgt.tx][tgt.ty - 1]
+                draw_aim(8, player, 1)
+                check_target(player, 8, enemy_list)
     elif key == pygame.K_DOWN:
             if dist_to_player(player, tgt.tx, tgt.ty + 1) <= range \
                     and 0 <= tgt.tx < GAME_SIZE \
                     and 0 <= tgt.ty + 1 < GAME_SIZE:
-                    player.throw_aim = terrain[tgt.tx][tgt.ty + 1]
-                    draw_aim(2, player, 1)
-                    check_target(player, 2, enemy_list)
+                old_aim = player.throw_aim
+                player.throw_aim = (tgt.tx, tgt.ty + 1)
+                print("Old TGT: {0}\t New TGT: {1}".format(old_aim, player.throw_aim))
+                aim_tile = terrain[tgt.tx][tgt.ty + 1]
+                draw_aim(2, player, 1)
+                check_target(player, 2, enemy_list)
     elif 256 < key < 266:
         dir = key - 256
         draw_aim(dir, player, 1)
@@ -1759,7 +2011,7 @@ def player_throw_aim(key, player, enemy_list):
         else:
             ANIMATING = 0
             ANIM_COORD_1 = (player.x_pos, player.y_pos)
-            ANIM_COORD_2 = (player.throw_aim.tx, player.throw_aim.ty)
+            ANIM_COORD_2 = player.throw_aim
             player.throw_item(player.item_sel, targeted[0])
             player.item_list.remove(player.item_sel)
             clear_aim()
@@ -1776,6 +2028,7 @@ def player_throw_aim(key, player, enemy_list):
 def draw_aim(direction, player, aim_type):
     global LEVEL_MAP
     move = player.move_list[player.move_choice]
+    aim_coord = player.throw_aim
     clear_aim()
     terrain = LEVEL_MAP.curr_screen.tile_map
     if aim_type == 0:
@@ -1829,71 +2082,76 @@ def draw_aim(direction, player, aim_type):
                     tile = terrain[player.x_pos + (i + 1)][player.y_pos + (i + 1)]
                     tile.aim_at()
     elif aim_type == 1:
-        aim_tile = player.throw_aim
-        if direction == 4:
-            if aim_tile.tx < 0:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 8:
-            if aim_tile.ty < 0:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 6:
-            if aim_tile.tx >= GAME_SIZE:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 2:
-            if aim_tile.ty >= GAME_SIZE:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 7:
-            if aim_tile.tx < 0 or aim_tile.ty < 0:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 9:
-            if aim_tile.ty < 0 or aim_tile.tx >= GAME_SIZE:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 1:
-            if aim_tile.tx < 0 or aim_tile.ty >= GAME_SIZE:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
-        elif direction == 3:
-            if aim_tile.ty >= GAME_SIZE or aim_tile.tx >= GAME_SIZE:
-                print("aim out of range")
-            else:
-                tile = terrain[aim_tile.tx][aim_tile.ty]
-                tile.aim_at()
-                splash_aim(tile, 0)
-                player.throw_aim = tile
+        aim_tile = terrain[aim_coord[0]][aim_coord[1]]
+        if 0 <= aim_tile.tx < GAME_SIZE and 0 <= aim_tile.ty < GAME_SIZE:
+            tile = terrain[aim_tile.tx][aim_tile.ty]
+            tile.aim_at()
+            splash_aim(tile, 0)
+
+            # if direction == 4:
+            #     if aim_tile.tx < 0:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx - 1][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 8:
+            #     if aim_tile.ty < 0:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty - 1]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 6:
+            #     if aim_tile.tx >= GAME_SIZE:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 2:
+            #     if aim_tile.ty >= GAME_SIZE:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 7:
+            #     if aim_tile.tx < 0 or aim_tile.ty < 0:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 9:
+            #     if aim_tile.ty < 0 or aim_tile.tx >= GAME_SIZE:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 1:
+            #     if aim_tile.tx < 0 or aim_tile.ty >= GAME_SIZE:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
+            # elif direction == 3:
+            #     if aim_tile.ty >= GAME_SIZE or aim_tile.tx >= GAME_SIZE:
+            #         print("aim out of range")
+            #     else:
+            #         tile = terrain[aim_tile.tx][aim_tile.ty]
+            #         tile.aim_at()
+            #         splash_aim(tile, 0)
+            #         player.throw_aim = (aim_tile.tx, aim_tile.ty)
 
 
 def splash_aim(tile, type):
@@ -2035,6 +2293,33 @@ def get_tiles(player, direction, move):
     return tiles
 
 
+def generate_player(existing_player=None, curr_level=None, p_nucleus=(3, 3), count=0):
+    px = p_nucleus[0]
+    py = p_nucleus[1]
+    if not curr_level or count > 3:
+        return None
+    else:
+        tile_map = curr_level.curr_screen.tile_map
+        print("This tile ({0}) evaluates to {1}".format(tile_map[px][py].seed_val, check_tile_okay(tile_map, px, py)))
+        while not check_tile_okay(tile_map, px, py):
+            print("checking if player spawn tile is okay")
+            cardinals = [(px - 1, py), (px, py - 1), (px + 1, py), (px, py + 1)]
+            new_coords = [x for x in cardinals if check_tile_okay(tile_map, x[0], x[1])]
+            print("All possible coords: {0}".format(new_coords))
+            if len(new_coords) == 0:
+                print("Couldn't find any possible options. attempting one more level")
+                recursive_potential_players = [generate_player(curr_level=curr_level, p_nucleus=x, count=count + 1) for x in cardinals]
+                return random.choice(recursive_potential_players)
+            else:
+                new_coord = random.choice(new_coords)
+                px = new_coord[0]
+                py = new_coord[1]
+        if not existing_player:
+            return Player(px, py, 0)
+        else:
+            existing_player.move_to(px, py)
+            return existing_player
+
 def main():
     global state
     global enemies
@@ -2049,15 +2334,24 @@ def main():
     global CONTINUING_PLAYER
     global NULL_PLAYER
     global game_finished_surface
+    global LEVEL_MAP
     app_loop = True
-    if CONTINUING_PLAYER == NULL_PLAYER:
-        player_main = Player(3, 3, 0)
-    else:
-        player_main = CONTINUING_PLAYER
     menu_selection = 1
     map_state = 0
+    LEVEL_MAP = Map(theme=random.choice(['normal', 'fiery']))
+    if CONTINUING_PLAYER == NULL_PLAYER:
+        player_main = generate_player(curr_level=LEVEL_MAP)
+    else:
+        player_main = CONTINUING_PLAYER
+
     while app_loop:
         if READY_TO_START:
+            if CONTINUING_PLAYER == NULL_PLAYER:
+                LEVEL_MAP = Map(theme=random.choice(['normal', 'fiery']))
+                player_main = generate_player(curr_level=LEVEL_MAP)
+            else:
+                player_main = CONTINUING_PLAYER
+                LEVEL_MAP = Map(player=player_main, theme=random.choice(['normal', 'fiery']))
             player_main.state = 0
             state = 0
             highlight_pos = 0
@@ -2103,7 +2397,6 @@ def main():
                         # print("The value of READY TO PLAY: " + str(READY_TO_START))
                         continue
 
-
         pygame.display.update()
 
 
@@ -2132,7 +2425,6 @@ def map_start(player_main):
     NUM_ENEMIES = 3
     i = 0
     goal_reached = False
-    LEVEL_MAP = Map()
     LEVEL_MAP.output_map_to_file()
     lvl_scr = LEVEL_MAP.curr_screen
 
@@ -2153,10 +2445,12 @@ def map_start(player_main):
             mainloop = False
             highlight_pos = 20
             map_state = 0
-        elif goal_reached:
-            mainloop = False
-            highlight_pos = 20
-            map_state = 1
+        elif lvl_scr.is_exit_screen:
+            ptile = lvl_scr.tile_map[player_main.x_pos][player_main.y_pos]
+            if ptile.is_exit:
+                mainloop = False
+                highlight_pos = 20
+                map_state = 1
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 mainloop = False
@@ -2176,12 +2470,12 @@ def map_start(player_main):
                         menu_nav(event.key, player_main, enemies)
                 else:
                     start_turn(event.key, player_main, enemies)
-        for t in targeted:
-            tile = LEVEL_MAP.curr_screen.tile_map[t.x_pos][t.y_pos]
-            if tile.aimed_at:
-                screen.blit(tgt_icon, tile.rect)
-            else:
-                 targeted.remove(t)
+        #for t in targeted:
+        #    tile = LEVEL_MAP.curr_screen.tile_map[t.x_pos][t.y_pos]
+        #    if tile.aimed_at:
+        #        screen.blit(tgt_icon, tile.rect)
+        #    else:
+        #         targeted.remove(t)
 
         if MSG_DISP:
             if MSG_TIME > 0:
